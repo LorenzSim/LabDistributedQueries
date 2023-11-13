@@ -46,7 +46,9 @@ public class RabbitMqConfig {
         return new Declarables(
                 new FanoutExchange("x.patient-validated"),
                 new Queue("q.patient-validated.appointment-service" ),
-                new Binding("q.patient-validated.appointment-service", Binding.DestinationType.QUEUE, "x.patient-validated", "patient-validated.appointment-service", null));
+                new Queue("q.patient-validated.api-gateway"),
+                new Binding("q.patient-validated.appointment-service", Binding.DestinationType.QUEUE, "x.patient-validated", "patient-validated.appointment-service", null),
+                new Binding("q.patient-validated.api-gateway", Binding.DestinationType.QUEUE, "x.patient-validated", "patient-validated.api-gateway", null));
     }
 
     @Bean

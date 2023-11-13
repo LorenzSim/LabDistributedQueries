@@ -37,6 +37,15 @@ public class HospitalController implements HospitalApiDelegate {
         this.appointmentApi = appointmentApi;
         this.doctorApi = doctorApi;
         this.patientApi = patientApi;
+
+        InstanceInfo appointmentServiceInstance = discoveryClient.getNextServerFromEureka("appointment-service", false);
+        appointmentApi.getApiClient().setBasePath(appointmentServiceInstance.getHomePageUrl());
+
+        InstanceInfo patientServiceInstance = discoveryClient.getNextServerFromEureka("patient-service", false);
+        patientApi.getApiClient().setBasePath(patientServiceInstance.getHomePageUrl());
+
+        InstanceInfo doctorServiceInstance = discoveryClient.getNextServerFromEureka("doctor-service", false);
+        doctorApi.getApiClient().setBasePath(doctorServiceInstance.getHomePageUrl());
     }
 
     @Override
@@ -53,15 +62,6 @@ public class HospitalController implements HospitalApiDelegate {
     // --- Code For Composition ---
 
     private ResponseEntity<ApiAppointmentOverview> getUsingApiComposition(LocalDate day) {
-        InstanceInfo appointmentServiceInstance = discoveryClient.getNextServerFromEureka("appointment-service", false);
-        appointmentApi.getApiClient().setBasePath(appointmentServiceInstance.getHomePageUrl());
-
-        InstanceInfo patientServiceInstance = discoveryClient.getNextServerFromEureka("patient-service", false);
-        patientApi.getApiClient().setBasePath(patientServiceInstance.getHomePageUrl());
-
-        InstanceInfo doctorServiceInstance = discoveryClient.getNextServerFromEureka("doctor-service", false);
-        doctorApi.getApiClient().setBasePath(doctorServiceInstance.getHomePageUrl());
-
         ApiAppointmentOverview appointmentOverview =
                 circuitBreakerFactory.create("appointmentApi").run(
                         () -> new ApiAppointmentOverview()
@@ -72,7 +72,7 @@ public class HospitalController implements HospitalApiDelegate {
                                                 new ApiAppointment()
                                                         .accountId(apiAppointment.getAccountId())
                                                         .roomId(apiAppointment.getRoomId())
-                                                        .doctor(circuitBreakerFactory.create("doctorApi").run(() ->{
+                                                        .doctor(circuitBreakerFactory.create("doctorApi").run(() -> {
                                                             be.ucll.da.apigateway.client.doctor.model.ApiDoctor doctor = doctorApi.getDoctorById(apiAppointment.getDoctorId());
                                                             return new ApiAppointmentDoctor()
                                                                     .id(doctor.getId())
@@ -80,8 +80,8 @@ public class HospitalController implements HospitalApiDelegate {
                                                                     .address(doctor.getAddress())
                                                                     .firstName(doctor.getFirstName())
                                                                     .lastName(doctor.getLastName());
-                                                        })).patient(circuitBreakerFactory.create("patientApi").run(() -> {
-
+                                                        }))
+                                                        .patient(circuitBreakerFactory.create("patientApi").run(() -> {
                                                             be.ucll.da.apigateway.client.patient.model.ApiPatient apiPatient = patientApi.getPatientById(apiAppointment.getDoctorId());
                                                             return new ApiAppointmentPatient()
                                                                     .id(apiPatient.getPatientId())
@@ -99,6 +99,7 @@ public class HospitalController implements HospitalApiDelegate {
     // --- Code For CQRS
 
     private ResponseEntity<ApiAppointmentOverview> getUsingCqrs(LocalDate day) {
-        throw new RuntimeException("Implement me!!");
+
+        return ResponseEntity.ok().build();
     }
 }
