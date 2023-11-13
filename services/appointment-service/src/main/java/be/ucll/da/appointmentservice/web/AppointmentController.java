@@ -22,15 +22,15 @@ public class AppointmentController implements AppointmentApiDelegate {
     }
 
     @Override
-    public ResponseEntity<ApiAppointmentRequestResponse> apiV1AppointmentRequestPost(ApiAppointmentRequest apiAppointmentRequest) {
-        ApiAppointmentRequestResponse response = new ApiAppointmentRequestResponse();
+    public ResponseEntity<be.ucll.da.appointmentservice.api.model.ApiAppointmentRequestResponse> apiV1AppointmentRequestPost(be.ucll.da.appointmentservice.api.model.ApiAppointmentRequest apiAppointmentRequest) {
+        ApiAppointmentRequestResponse response = new be.ucll.da.appointmentservice.api.model.ApiAppointmentRequestResponse();
         response.appointmentRequestNumber(appointmentService.registerRequest(apiAppointmentRequest));
 
         return ResponseEntity.ok(response);
     }
 
     @Override
-    public ResponseEntity<Void> apiV1AppointmentConfirmationPost(ApiAppointmentConfirmation apiAppointmentConfirmation) {
+    public ResponseEntity<Void> apiV1AppointmentConfirmationPost(be.ucll.da.appointmentservice.api.model.ApiAppointmentConfirmation apiAppointmentConfirmation) {
         appointmentService.finalizeAppointment(apiAppointmentConfirmation);
         return ResponseEntity.ok().build();
     }
