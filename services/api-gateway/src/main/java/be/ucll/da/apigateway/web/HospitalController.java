@@ -7,6 +7,7 @@ import be.ucll.da.apigateway.api.model.ApiAppointmentOverview;
 import be.ucll.da.apigateway.api.model.ApiAppointmentPatient;
 import be.ucll.da.apigateway.client.appointment.api.AppointmentApi;
 import be.ucll.da.apigateway.client.doctor.api.DoctorApi;
+import be.ucll.da.apigateway.client.doctor.model.ApiDoctor;
 import be.ucll.da.apigateway.client.patient.api.PatientApi;
 import be.ucll.da.apigateway.domain.appointment.Appointment;
 import be.ucll.da.apigateway.domain.appointment.FinalizedAppointmentRepository;
@@ -21,7 +22,6 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Objects;
 
 @Component
 public class HospitalController implements HospitalApiDelegate {
@@ -36,8 +36,6 @@ public class HospitalController implements HospitalApiDelegate {
     private final be.ucll.da.apigateway.client.patient.api.PatientApi patientApi;
 
     private final FinalizedAppointmentRepository finalizedAppointmentRepository;
-
-
 
     @Autowired
     public HospitalController(CircuitBreakerFactory circuitBreakerFactory, EurekaClient discoveryClient, AppointmentApi appointmentApi, DoctorApi doctorApi, PatientApi patientApi, FinalizedAppointmentRepository finalizedAppointmentRepository) {
@@ -63,8 +61,7 @@ public class HospitalController implements HospitalApiDelegate {
 
     // --- Code For Composition ---
 
-    private ResponseEntity<ApiAppointmentOverview> getUsingApiComposition(LocalDate day) {
-
+    private void refreshApiConfig() {
         InstanceInfo appointmentServiceInstance = discoveryClient.getNextServerFromEureka("appointment-service", false);
         appointmentApi.getApiClient().setBasePath(appointmentServiceInstance.getHomePageUrl());
 
@@ -73,79 +70,96 @@ public class HospitalController implements HospitalApiDelegate {
 
         InstanceInfo doctorServiceInstance = discoveryClient.getNextServerFromEureka("doctor-service", false);
         doctorApi.getApiClient().setBasePath(doctorServiceInstance.getHomePageUrl());
+    }
+
+    private ResponseEntity<ApiAppointmentOverview> getUsingApiComposition(LocalDate day) {
+        refreshApiConfig();
+
+        be.ucll.da.apigateway.client.appointment.model.ApiAppointmentOverview clientAppointmentOverview
+                = appointmentApi.apiV1AppointmentDayGet(day.toString());
 
         ApiAppointmentOverview appointmentOverview =
                 circuitBreakerFactory.create("appointmentApi").run(
                         () -> new ApiAppointmentOverview()
                                 .day(day)
-                                .appointments(
-                                Objects.requireNonNull(appointmentApi.apiV1AppointmentDayGet(day.toString()).getAppointments()).stream().map(
-                                        apiAppointment ->
-                                                new ApiAppointment()
-                                                        .accountId(apiAppointment.getAccountId())
-                                                        .roomId(apiAppointment.getRoomId())
-                                                        .doctor(circuitBreakerFactory.create("doctorApi").run(() -> {
-                                                            be.ucll.da.apigateway.client.doctor.model.ApiDoctor doctor = doctorApi.getDoctorById(apiAppointment.getDoctorId());
-                                                            return new ApiAppointmentDoctor()
-                                                                    .id(doctor.getId())
-                                                                    .age(doctor.getAge())
-                                                                    .address(doctor.getAddress())
-                                                                    .firstName(doctor.getFirstName())
-                                                                    .lastName(doctor.getLastName());
-                                                        }))
-                                                        .patient(circuitBreakerFactory.create("patientApi").run(() -> {
-                                                            be.ucll.da.apigateway.client.patient.model.ApiPatient apiPatient = patientApi.getPatientById(apiAppointment.getDoctorId());
-                                                            return new ApiAppointmentPatient()
-                                                                    .id(apiPatient.getPatientId())
-                                                                    .firstName(apiPatient.getFirstName())
-                                                                    .lastName(apiPatient.getLastName())
-                                                                    .email(apiPatient.getEmail());
-                                                        }))
-                                ).toList()
-                        )
+                                .appointments((clientAppointmentOverview.getAppointments()).stream().map(this::createApiAppointment).toList())
                 );
 
         return ResponseEntity.ok(appointmentOverview);
     }
+
 
     // --- Code For CQRS
 
     private ResponseEntity<ApiAppointmentOverview> getUsingCqrs(LocalDate day) {
         List<Appointment> appointments = finalizedAppointmentRepository.getAppointmentsByAppointmentDay(day);
 
-        ApiAppointmentOverview appointmentOverview = new ApiAppointmentOverview()
+        ApiAppointmentOverview appointmentOverview =
+                new ApiAppointmentOverview()
                 .day(day)
-                .appointments(appointments.stream().map(
-                        appointment -> {
-                            Patient patient = appointment.getPatient();
-                            Doctor doctor = appointment.getDoctor();
-                                    return new ApiAppointment()
-                                            .accountId(appointment.getAccountId())
-                                            .roomId(appointment.getRoomId())
-                                            .patient(createApiAppointmentPatient(patient.getId(), patient.getFirstName(), patient.getLastName(), patient.getEmail()))
-                                            .doctor(createApiAppointmentDoctor(doctor.getId(), doctor.getFirstName(), doctor.getLastName(), doctor.getAge(), doctor.getAddress()));
-                            }
-                        ).toList()
-                );
+                .appointments(appointments.stream().map(this::createApiAppointment).toList());
 
         return ResponseEntity.ok(appointmentOverview);
     }
 
-    private static ApiAppointmentPatient createApiAppointmentPatient(Integer id, String fistName, String lastName, String email) {
-        return new ApiAppointmentPatient()
-                .id(id)
-                .firstName(fistName)
-                .lastName(lastName)
-                .email(email);
+    private ApiAppointment createApiAppointment(Appointment appointment) {
+        return createApiAppointment(appointment.getAccountId(), appointment.getRoomId(), createApiAppointmentDoctor(appointment.getDoctor()), createApiAppointmentPatient(appointment.getPatient()));
     }
 
-    private static ApiAppointmentDoctor createApiAppointmentDoctor(Integer id, String firstName, String lastName, Integer age, String address){
+    private ApiAppointment createApiAppointment(be.ucll.da.apigateway.client.appointment.model.ApiAppointment apiAppointment) {
+        ApiAppointmentDoctor apiAppointmentDoctor = createApiAppointmentDoctor(getApiDoctor(apiAppointment.getDoctorId()));
+        ApiAppointmentPatient apiAppointmentPatient = createApiAppointmentPatient(getApiPatient(apiAppointment.getPatientId()));
+        return createApiAppointment(apiAppointment.getAccountId(), apiAppointment.getRoomId(), apiAppointmentDoctor, apiAppointmentPatient);
+    }
+
+    private ApiAppointment createApiAppointment(Integer accountId, Integer roomId, ApiAppointmentDoctor doctor, ApiAppointmentPatient patient) {
+        return new ApiAppointment()
+                .accountId(accountId)
+                .roomId(roomId)
+                .doctor(doctor)
+                .patient(patient);
+    }
+
+
+    private ApiAppointmentDoctor createApiAppointmentDoctor(Doctor doctor) {
+        return createApiAppointmentDoctor(doctor.getId(), doctor.getFirstName(), doctor.getLastName(), doctor.getAge(), doctor.getAddress());
+    }
+
+    private ApiAppointmentDoctor createApiAppointmentDoctor(be.ucll.da.apigateway.client.doctor.model.ApiDoctor doctor) {
+        return createApiAppointmentDoctor(doctor.getId(), doctor.getFirstName(), doctor.getLastName(), doctor.getAge(), doctor.getAddress());
+    }
+
+    private ApiAppointmentDoctor createApiAppointmentDoctor(Integer id, String firstName, String lastName, Integer age, String address) {
         return new ApiAppointmentDoctor()
                 .id(id)
                 .firstName(firstName)
                 .lastName(lastName)
                 .age(age)
                 .address(address);
+    }
+
+    private ApiAppointmentPatient createApiAppointmentPatient(be.ucll.da.apigateway.client.patient.model.ApiPatient patient) {
+        return createApiAppointmentPatient(patient.getPatientId(), patient.getFirstName(), patient.getLastName(), patient.getEmail());
+    }
+
+    private ApiAppointmentPatient createApiAppointmentPatient(Patient patient) {
+        return createApiAppointmentPatient(patient.getId(), patient.getFirstName(), patient.getLastName(), patient.getEmail());
+    }
+
+    private ApiAppointmentPatient createApiAppointmentPatient(Integer id, String firstName, String lastName, String email) {
+        return new ApiAppointmentPatient()
+                .id(id)
+                .firstName(firstName)
+                .lastName(lastName)
+                .email(email);
+    }
+
+    private ApiDoctor getApiDoctor(Integer id) {
+        return circuitBreakerFactory.create("doctorApi").run(() -> doctorApi.getDoctorById(id));
+    }
+
+    private be.ucll.da.apigateway.client.patient.model.ApiPatient getApiPatient(Integer id) {
+        return circuitBreakerFactory.create("patientApi").run(() -> patientApi.getPatientById(id));
     }
 
 }

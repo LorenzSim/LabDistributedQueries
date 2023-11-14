@@ -1,6 +1,6 @@
 package be.ucll.da.apigateway.messaging;
 
-import be.ucll.da.apigateway.domain.CQRSHospitalService;
+import be.ucll.da.apigateway.domain.HospitalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -16,10 +16,10 @@ import be.ucll.da.apigateway.client.appointment.model.AppointmentFinalizedEvent;
 public class MessageListener {
     private final static Logger LOGGER = LoggerFactory.getLogger(MessageListener.class);
 
-    private final CQRSHospitalService hospitalService;
+    private final HospitalService hospitalService;
 
     @Autowired
-    public MessageListener(CQRSHospitalService hospitalService) {
+    public MessageListener(HospitalService hospitalService) {
         this.hospitalService = hospitalService;
     }
 

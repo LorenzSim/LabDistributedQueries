@@ -13,14 +13,14 @@ import javax.transaction.Transactional;
 
 @Service
 @Transactional
-public class CQRSHospitalService {
+public class HospitalService {
 
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
     private final FinalizedAppointmentRepository finalizedAppointmentRepository;
 
     @Autowired
-    public CQRSHospitalService(PatientRepository patientRepository, DoctorRepository doctorRepository, FinalizedAppointmentRepository finalizedAppointmentRepository) {
+    public HospitalService(PatientRepository patientRepository, DoctorRepository doctorRepository, FinalizedAppointmentRepository finalizedAppointmentRepository) {
         this.patientRepository = patientRepository;
         this.doctorRepository = doctorRepository;
         this.finalizedAppointmentRepository = finalizedAppointmentRepository;
@@ -55,16 +55,13 @@ public class CQRSHospitalService {
     }
 
     public void saveFinalizedAppointment(be.ucll.da.apigateway.client.appointment.model.AppointmentFinalizedEvent event) {
-        Patient patient = getPatient(event.getPatientId());
-        Doctor doctor = getDoctor(event.getDoctorId());
-
         Appointment appointment = new Appointment(
                 event.getAppointmentRequestNumber(),
                 event.getDay(),
                 event.getAccountId(),
                 event.getRoomId(),
-                patient,
-                doctor
+                getPatient(event.getPatientId()),
+                getDoctor(event.getDoctorId())
         );
 
         finalizedAppointmentRepository.save(appointment);
